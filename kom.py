@@ -17,7 +17,7 @@ import struct
 import sys
 import os
 import zlib
-from xml.dom.minidom import Document
+from xml.dom.minidom import Document, parseString
 
 class Entry:
     metadata_size = 72
@@ -82,11 +82,15 @@ class Entry:
     @classmethod
     def from_file(cls, file_path, relative_offset):
         name = os.path.split(file_path)[1]
-        uncompressed_size = os.path.getsize(file_path)
+
+        if len(name) > 60:
+            raise Exception('the file "%s" is nammed bigger than 60 characters' % name)
+
 
         with open(file_path, 'rb') as f:
             data = zlib.compress(f.read())
 
+        uncompressed_size = os.path.getsize(file_path)
         compressed_size = len(data)
         return cls(name, uncompressed_size, compressed_size, relative_offset, data)
 
@@ -106,27 +110,35 @@ class Entry:
 class Crc:
     @property
     def xml(self):
-        try:
-            return self._xml
-        except AttributeError:
-            return self.gen_xml()
+        if self._parsed:
+            return self._dom.toxml(encoding='ascii')
+        else:
+            return self._dom.toprettyxml(indent='    ', encoding='ascii')
 
-    def __init__(self, version):
+    def __init__(self, version, entry=None):
         # version must be an integer
-        self._dom = Document()
 
-        dom_file_info = self._dom.createElement('FileInfo')
-        self._dom.appendChild(dom_file_info)
+        if entry:
+            self._dom = parseString(entry.uncompressed_data)
+            self._parsed = True
 
-        dom_version = self._dom.createElement('Version')
-        dom_file_info.appendChild(dom_version)
+        else:
+            self._dom = Document()
 
-        dom_version_item = self._dom.createElement('Item')
-        dom_version_item.setAttribute('Name', Kom.format_version(version))
-        dom_version.appendChild(dom_version_item)
+            dom_file_info = self._dom.createElement('FileInfo')
+            self._dom.appendChild(dom_file_info)
 
-        self._dom_files = self._dom.createElement('File')
-        dom_file_info.appendChild(self._dom_files)
+            dom_version = self._dom.createElement('Version')
+            dom_file_info.appendChild(dom_version)
+
+            dom_version_item = self._dom.createElement('Item')
+            dom_version_item.setAttribute('Name', Kom.format_version(version))
+            dom_version.appendChild(dom_version_item)
+
+            self._dom_files = self._dom.createElement('File')
+            dom_file_info.appendChild(self._dom_files)
+
+            self._parsed = False
 
     def append_entry(self, entry):
         dom_file_item = self._dom.createElement('Item')
@@ -136,16 +148,16 @@ class Crc:
         dom_file_item.setAttribute('CheckSum', '%08x' % entry.crc32)
         self._dom_files.appendChild(dom_file_item)
 
-    def gen_xml(self):
-        self._xml = self._dom.toprettyxml(indent='    ', encoding='ascii')
-        return self._xml
-
 class Kom:
-    header_size = 60
+    header_info_size = 60
 
     @property
     def entries(self):
         return self._entries
+
+    @property
+    def crc_entry(self):
+        return self._crc_entry
 
     @property
     def version(self):
@@ -160,69 +172,59 @@ class Kom:
         return Kom.format_version(self._version)
 
     @property
-    def crc(self):
-        return self._entries[-1].uncompressed_data
+    def crc_xml(self):
+        return self._crc.xml
 
-    def __init__(self, entries, version):
-        self._entries = entries
+    def __init__(self, version, entries=[], crc=None):
         self._version = version
+        self._entries = entries
+        self._relative_offset = 0
+
+        if crc:
+            self._crc = crc
+            self._crc_entry = self._entries[-1]
+            del self._entries[-1]
+        else:
+            self._crc = Crc(version)
+            self._crc_entry = None
 
     @classmethod
     def from_kom_file(cls, file_path):
         entries = []
 
         with open(file_path, 'rb') as f:
-            header = f.read(Kom.header_size)
-            f.seek(Kom.header_size)
+            header = f.read(Kom.header_info_size)
+            f.seek(Kom.header_info_size)
 
             raw_version, entry_count = struct.unpack_from('<27s25xI4x', header)
             version = int(raw_version.decode('ascii').split('.')[-2])
 
             entries_size = Entry.metadata_size * entry_count
             raw_entries = f.read(entries_size)
-            f.seek(Kom.header_size + entries_size)
+            f.seek(Kom.header_info_size + entries_size)
 
             raw_data = f.read()
 
-            offset = 0
-            for i in range(entry_count):
-                entry = Entry.from_kom_data(raw_entries[offset :
-                                                        offset + Entry.metadata_size],
-                                            raw_data)
-                entries.append(entry)
-                offset += Entry.metadata_size
-
-        return cls(entries, version)
-
-    @classmethod
-    def from_files(cls, in_dir_path, version):
-        entries = []
-
-        crc = Crc(version)
-
-        relative_offset = 0
-        for file_name in sorted(os.listdir(in_dir_path)):
-            file_path = os.path.join(in_dir_path, file_name)
-
-            if os.path.isdir(file_path):
-                continue
-
-            if file_name == 'crc.xml':
-                continue
-
-            if len(file_name) > 60:
-                raise Exception('the file {:!} is nammed bigger than 60 characters'.format(file_path))
-
-            entry = Entry.from_file(file_path, relative_offset)
-            relative_offset += entry.compressed_size
-
-            crc.append_entry(entry)
+        offset = 0
+        for i in range(entry_count):
+            entry = Entry.from_kom_data(raw_entries[offset :
+                                                    offset + Entry.metadata_size],
+                                        raw_data)
             entries.append(entry)
+            offset += Entry.metadata_size
 
-        entry = Entry.from_data(crc.xml, 'crc.xml', relative_offset)
-        entries.append(entry)
+        crc = Crc(version, entry=entries[-1])
 
-        return cls(entries, version)
+        return cls(version, entries=entries, crc=crc)
+
+    def add_file(self, file_path):
+        if os.path.split(file_path)[1] == 'crc.xml':
+            return
+
+        entry = Entry.from_file(file_path, self._relative_offset)
+        self._relative_offset += entry.compressed_size
+        self._entries.append(entry)
+        self._crc.append_entry(entry)
 
     def to_file(self):
         entries_metadata = bytearray()
@@ -233,15 +235,19 @@ class Kom:
 
         # I don't know what is that "1" number here, but it seems that any .kom
         # file has it in that place.
-        header = struct.pack('<27s25x2I', raw_version, len(self._entries), 1)
+        header_info = struct.pack('<27s25x2I', raw_version, len(self._entries) + 1, 1)
 
-        for e in self._entries:
-            entries_metadata += e.packed_metadata
-            data += e.data
+        for entry in self._entries:
+            entries_metadata += entry.packed_metadata
+            data += entry.data
 
-        return header + entries_metadata + data
+        entry = Entry.from_data(self._crc.xml, 'crc.xml', self._relative_offset)
+        entries_metadata += entry.packed_metadata
+        data += entry.data
 
-    def extract(self, out_dir, keep_crc=False):
+        return header_info + entries_metadata + data
+
+    def extract(self, entry_index, out_dir):
         try:
             os.makedirs(out_dir)
         except FileExistsError as e:
@@ -250,14 +256,7 @@ class Kom:
             else:
                 raise e
 
-        offset = 0
-        entries = self._entries if keep_crc else self._entries[:-1]
-        for entry in entries:
-            try:
-                out_file_path = os.path.join(out_dir, entry.name)
-
-                with open(out_file_path, 'wb') as f:
-                    f.write(entry.uncompressed_data)
-
-            except Exception as e:
-                raise e
+        entry = self._crc_entry if entry_index == 'crc' else self._entries[entry_index]
+        out_file_path = os.path.join(out_dir, entry.name)
+        with open(out_file_path, 'wb') as f:
+            f.write(entry.uncompressed_data)

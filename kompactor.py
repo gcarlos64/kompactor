@@ -97,28 +97,38 @@ def main(argv):
 
     if action == 'x':
         out_file_path = args[1] if args_len == 2 else args[0].rsplit('.', 1)[0]
-        try:
-            kom = Kom.from_kom_file(in_file_path)
-            kom.extract(out_file_path, keep_crc)
-        except Exception as e:
-            eprint(e)
-            sys.exit(1)
+        kom = Kom.from_kom_file(in_file_path)
+
+        for i in range(len(kom.entries)):
+            print('Extracting', kom.entries[i].name)
+            kom.extract(i, out_file_path)
+
+        if keep_crc:
+            print('Extracting crc.xml')
+            crc_path = os.path.join(out_file_path, 'crc.xml')
+            kom.extract('crc', out_file_path)
 
     elif action == 'c':
         out_file_path = args[1] if args_len == 2 else args[0] + '.kom'
-        try:
-            kom = Kom.from_files(in_file_path, 2)
-            with open(out_file_path, 'wb') as f:
-                f.write(kom.to_file())
+        kom = Kom(2)
 
-            if keep_crc:
-                crc_path = os.path.join(os.path.split(out_file_path)[0], 'crc.xml')
-                with open(crc_path, 'wb') as f:
-                    f.write(kom.crc)
+        for file_name in sorted(os.listdir(in_file_path)):
+            if file_name == 'crc.xml':
+                continue
 
-        except Exception as e:
-            eprint(e)
-            sys.exit(1)
+            print('Adding', file_name)
+            file_path = os.path.join(in_file_path, file_name)
+            kom.add_file(file_path)
+
+        with open(out_file_path, 'wb') as f:
+            print('Writting', os.path.split(out_file_path)[1])
+            f.write(kom.to_file())
+
+        if keep_crc:
+            print('Writting crc.xml')
+            crc_path = os.path.join(os.path.split(out_file_path)[0], 'crc.xml')
+            with open(crc_path, 'wb') as f:
+                f.write(kom.crc_xml)
 
     elif action == 'l':
         try:
