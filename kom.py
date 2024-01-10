@@ -20,9 +20,17 @@ import errno
 import zlib
 from xml.dom.minidom import Document, parseString
 
-#class IgnoredFile(Exception):
-#    def __init__(self, file_name):
-#        self.file_name = file_name
+class IgnoredFile(Exception):
+    def __init__(self, file_name):
+        self.file_name = file_name
+
+class MultipleFilesError(Exception):
+    def __init__(self, file_name):
+        self.file_name = file_name
+
+class NotAKomFileError(Exception):
+    def __init__(self, file_name):
+        self.file_name = file_name
 
 class Entry:
     metadata_size = 72
@@ -133,7 +141,7 @@ class Crc:
             dom_file_info.appendChild(dom_version)
 
             dom_version_item = self._dom.createElement('Item')
-            dom_version_item.setAttribute('Name', Kom.format_version(version))
+            dom_version_item.setAttribute('Name', Kom.version_format % version)
             dom_version.appendChild(dom_version_item)
 
             self._dom_files = self._dom.createElement('File')
@@ -151,6 +159,8 @@ class Crc:
 
 class Kom:
     header_info_size = 60
+    raw_version_format = 'KOG GC TEAM MASSFILE V.0.%d.'
+    version_format = 'V.0.%d.'
 
     @property
     def entries(self):
@@ -164,13 +174,9 @@ class Kom:
     def version(self):
         return self._version
 
-    @staticmethod
-    def format_version(version):
-        return 'V.0.%d.' % version
-
     @property
     def version_str(self):
-        return Kom.format_version(self._version)
+        return Kom.version_format % self._version
 
     @property
     def crc_xml(self):
@@ -196,7 +202,12 @@ class Kom:
             f.seek(Kom.header_info_size)
 
             raw_version, entry_count = struct.unpack_from('<27s25xI4x', header)
-            version = int(raw_version.decode('ascii').split('.')[-2])
+
+            decoded_raw_version = raw_version.decode('ascii')
+            version = int(decoded_raw_version.split('.')[-2])
+            if decoded_raw_version != raw_version_format % version and \
+               version in range(6):
+                raise Exception
 
             entries_size = Entry.metadata_size * entry_count
             raw_entries = f.read(entries_size)
@@ -220,14 +231,14 @@ class Kom:
         file_name = os.path.split(file_path)[1]
 
         if file_name == 'crc.xml':
-            return
+            raise IgnoredFile(file_name)
 
         if len(file_name) > 60:
-            return
+            raise IgnoredFile(file_name)
 
         for e in self._entries:
             if e.name == file_name:
-                return
+                raise MultipleFilesError(file_name)
 
         entry = Entry.from_file(file_path, self._relative_offset)
         self._entries.append(entry)

@@ -20,7 +20,7 @@ import sys
 import os
 import errno
 
-from kom import Kom
+from kom import Kom, IgnoredFile, MultipleFilesError
 
 help_message = '''
 Usage: {executable} <action> <options> <file-list>
@@ -44,6 +44,8 @@ Actions:
 Options:
   -f, --force         Force overwriting files. This has no effect when trying
                       to overwrite directories, since it is not allowed.
+
+  -i, --ignore        Allows to ignore files.
 
   -k, --keep-crc      Keeps crc.xml. Write the extracted or generated crc.xml
                       next to the created or extracted files.
@@ -84,10 +86,11 @@ def extract(kom, i, out_file_path, force_overwrite):
     try:
         kom.extract(i, out_file_path, force_overwrite)
     except FileExistsError as e:
-        eprint('Trying to overwrite "%s" file' % e.filename)
+        eprint('Unable to overwrite "%s" file' % file_path,
+               '. If it was intended, run with -f option')
         sys.exit(e.errno)
     except IsADirectoryError as e:
-        eprint('Trying to overwrite "%s" directory' % e.filename)
+        eprint('Unable to overwrite "%s" directory' % e.filename)
         sys.exit(e.errno)
 
     if i == 'crc':
@@ -97,14 +100,15 @@ def extract(kom, i, out_file_path, force_overwrite):
 
 def write(file_path, data, force_overwrite):
     if not force_overwrite and os.path.isfile(file_path):
-        eprint('Trying to overwrite "%s" file' % file_path)
+        eprint('Unable to overwrite "%s" file' % file_path,
+               '. If it was intended, run with -f option')
         sys.exit(errno.EEXIST)
 
     try:
         with open(file_path, 'wb') as f:
             f.write(data)
     except IsADirectoryError as e:
-        eprint('Trying to overwrite "%s" directory' % e.filename)
+        eprint('Unable to overwrite "%s" directory' % e.filename)
         sys.exit(e.errno)
 
 def main(argv):
@@ -113,9 +117,10 @@ def main(argv):
         sys.exit(0)
 
     try:
-        opts, args = getopt.gnu_getopt(argv[1:], 'cfhklo:x',
-                                       ['create', 'force', 'help', 'keep-crc',
-                                        'list', 'output=', 'extract', 'examples'])
+        opts, args = getopt.gnu_getopt(argv[1:], 'cfhiklo:x',
+                                       ['create', 'force', 'help', 'ignore',
+                                        'keep-crc', 'list', 'output=', 'extract',
+                                        'examples'])
     except Exception as e:
         eprint(e)
         sys.exit(1)
@@ -123,6 +128,7 @@ def main(argv):
     action = ''
     force_overwrite = False
     keep_crc = False
+    ignore_files = False
     out_file_path = None
     for opt, arg in opts:
         if opt in ('-h', '--help'):
@@ -148,6 +154,9 @@ def main(argv):
         elif opt in ('-k', '--keep-crc'):
             keep_crc = True
 
+        elif opt in ('-i', '--ignore'):
+            ignore_files = True
+
         elif opt in ('-o', '--output'):
             out_file_path = arg
 
@@ -169,7 +178,11 @@ def main(argv):
         if not out_file_path:
             out_file_path = os.path.relpath(os.getcwd())
 
-        kom = Kom.from_kom_file(in_file_path)
+        try:
+            kom = Kom.from_kom_file(in_file_path)
+        except:
+            eprint('"%s" is not a valid KOM file' % in_file_path)
+            sys.exit(1)
 
         index_list = [i for i in range(len(kom.entries))
                       if kom.entries[i].name in file_list or
@@ -197,12 +210,23 @@ def main(argv):
 
         for file_path in file_list:
             file_name = os.path.split(file_path)[1]
-            if file_name == 'crc.xml':
-                print('Ignoring', file_name)
-                continue
 
-            kom.add_file(file_path)
-            print('Included', file_name)
+            try:
+                kom.add_file(file_path)
+            except IgnoredFile:
+                if ignore_files:
+                    print('Ignoring', file_name)
+                    pass
+                else:
+                    eprint('Tying to ignore', file_name,
+                           '. If it was intended, run with -i option')
+                    sys.exit(1)
+                pass
+            except MultipleFilesError as e:
+                eprint('Unable to include multiples files named "%s"' % e.file_name)
+                sys.exit(1)
+            else:
+                print('Included', file_name)
 
         write(out_file_path, kom.to_file(), force_overwrite)
         print('Created', os.path.split(out_file_path)[1])
@@ -215,7 +239,12 @@ def main(argv):
     # TODO: handle errors, format output better and add header
     elif action == 'list':
         for f in args:
-            kom = Kom.from_kom_file(f)
+            try:
+                kom = Kom.from_kom_file(f)
+            except:
+                eprint('"%s" is not a valid KOM file' % f)
+                sys.exit(1)
+
             for entry in kom.entries:
                 print('{}: {} {} {}'.format(f, entry.name, entry.compressed_size,
                                             entry.uncompressed_size))
