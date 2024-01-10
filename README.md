@@ -26,11 +26,6 @@ target handling files from the Season 2. Further versions may be implemented
 by me if I start to work with these or by anyone willing to, it's free software
 and is always welcome to contributors.
 
-The tool can't handle multiples `.kom` files on a instance neither receive
-files instead of directories for `.kom` creation, as I personally
-prefer to do it with the shell instead of putting complexity on the tool.
-Anyway, this can be considered an improvement if someone decide to implement.
-
 # TODO
 This tool in its current state just do its job, nothing more. There's a lot
 of room for improvements, like:
@@ -41,5 +36,3 @@ of room for improvements, like:
 - Add support for warnings, as well as verbosity level control.
 - Add checksum validation on extraction.
 - Add support to more KOM versions.
-- Add support for handling multiple files (both extracting multiples `.kom`
-  and creating from explicit files instead of just with a directory).
