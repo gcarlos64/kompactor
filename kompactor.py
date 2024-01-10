@@ -72,6 +72,15 @@ Examples:
    Create out.kom from the contents of directory "dir" plus file1 and file2.
 '''
 
+overwrite_file_err_msg = 'Unable to overwrite "%s" file. It it was intentional, run with -f option'
+overwrite_dir_err_msg = 'Unable to overwrite "%s" directory'
+no_action_err_msg = 'No actions specified. You should specify one'
+multiple_actions_err_msg = 'Multiple actions specified. You should specify just one'
+no_input_err_msg = 'You should specify at least one input file or directory'
+kom_not_valid_err_msg = '"%s" is not a valid KOM file'
+no_file_entry_err_msg = 'No valid file entry was provided for extraction'
+ignore_err_msg = 'Unable to ignore %s. If it was intentional, run with -i option'
+include_err_msg = 'Unable to include multiples files named "%s"'
 
 def eprint(*args, **kwargs):
     print('Error:', *args, file=sys.stderr, **kwargs)
@@ -86,11 +95,10 @@ def extract(kom, i, out_file_path, force_overwrite):
     try:
         kom.extract(i, out_file_path, force_overwrite)
     except FileExistsError as e:
-        eprint('Unable to overwrite "%s" file' % file_path,
-               '. If it was intended, run with -f option')
+        eprint(overwrite_file_err_msg % file_path)
         sys.exit(e.errno)
     except IsADirectoryError as e:
-        eprint('Unable to overwrite "%s" directory' % e.filename)
+        eprint(overwrite_dir_err_msg % e.filename)
         sys.exit(e.errno)
 
     if i == 'crc':
@@ -100,15 +108,14 @@ def extract(kom, i, out_file_path, force_overwrite):
 
 def write(file_path, data, force_overwrite):
     if not force_overwrite and os.path.isfile(file_path):
-        eprint('Unable to overwrite "%s" file' % file_path,
-               '. If it was intended, run with -f option')
+        eprint(overwrite_file_err_msg % file_path)
         sys.exit(errno.EEXIST)
 
     try:
         with open(file_path, 'wb') as f:
             f.write(data)
     except IsADirectoryError as e:
-        eprint('Unable to overwrite "%s" directory' % e.filename)
+        eprint(overwrite_dir_err_msg % e.filename)
         sys.exit(e.errno)
 
 def main(argv):
@@ -161,15 +168,15 @@ def main(argv):
             out_file_path = arg
 
     if action == '':
-        eprint('No actions specified. You should specify one')
+        eprint(no_action_err_msg)
         sys.exit(1)
     elif action == 'error':
-        eprint('Multiple actions specified. You should specify just one')
+        eprint(multiple_actions_err_msg)
         sys.exit(1)
 
     args_len = len(args)
     if args_len == 0:
-        eprint('You should specify at least one input file or directory')
+        eprint(no_input_err_msg)
         sys.exit(1)
 
     if action == 'extract':
@@ -181,7 +188,7 @@ def main(argv):
         try:
             kom = Kom.from_kom_file(in_file_path)
         except:
-            eprint('"%s" is not a valid KOM file' % in_file_path)
+            eprint(kom_not_valid_err_msg % in_file_path)
             sys.exit(1)
 
         index_list = [i for i in range(len(kom.entries))
@@ -189,7 +196,7 @@ def main(argv):
                       file_list == []]
 
         if len(index_list) == 0:
-            eprint('No valid file entry was provided for extraction')
+            eprint(no_file_entry_err_msg)
             sys.exit(1)
 
         for i in index_list:
@@ -218,12 +225,11 @@ def main(argv):
                     print('Ignoring', file_name)
                     pass
                 else:
-                    eprint('Tying to ignore', file_name,
-                           '. If it was intended, run with -i option')
+                    eprint(ignore_err_msg % file_name)
                     sys.exit(1)
                 pass
             except MultipleFilesError as e:
-                eprint('Unable to include multiples files named "%s"' % e.file_name)
+                eprint(include_err_msg % e.file_name)
                 sys.exit(1)
             else:
                 print('Included', file_name)
@@ -242,7 +248,7 @@ def main(argv):
             try:
                 kom = Kom.from_kom_file(f)
             except:
-                eprint('"%s" is not a valid KOM file' % f)
+                eprint(kom_not_valid_err_msg  % f)
                 sys.exit(1)
 
             for entry in kom.entries:
