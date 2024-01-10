@@ -35,10 +35,6 @@ class Entry:
         return self._compressed_size
 
     @property
-    def relative_offset(self):
-        return self._relative_offset
-
-    @property
     def data(self):
         return self._data
 
@@ -56,7 +52,7 @@ class Entry:
                            self._name.encode('ascii'),
                            self._uncompressed_size,
                            self._compressed_size,
-                           self._relative_offset)
+                           self.relative_offset)
 
     @property
     def crc32(self):
@@ -66,7 +62,7 @@ class Entry:
         self._name = name if (type(name) is str) else name.decode('ascii').rstrip('\0')
         self._uncompressed_size = uncompressed_size
         self._compressed_size = compressed_size
-        self._relative_offset = relative_offset
+        self.relative_offset = relative_offset
 
         # This is compressed data
         self._data = data
@@ -104,8 +100,8 @@ class Entry:
 
     # Read the kom file data segment
     def _read(self, raw_data):
-        self._data = raw_data[self._relative_offset :
-                              self._relative_offset + self._compressed_size]
+        self._data = raw_data[self.relative_offset :
+                              self.relative_offset + self._compressed_size]
 
 class Crc:
     @property
@@ -178,14 +174,13 @@ class Kom:
     def __init__(self, version, entries=[], crc=None):
         self._version = version
         self._entries = entries
-        self._relative_offset = 0
 
         if crc:
             self._crc = crc
             self._crc_entry = self._entries[-1]
             del self._entries[-1]
         else:
-            self._crc = Crc(version)
+            self._crc = None
             self._crc_entry = None
 
     @classmethod
@@ -218,15 +213,23 @@ class Kom:
         return cls(version, entries=entries, crc=crc)
 
     def add_file(self, file_path):
-        if os.path.split(file_path)[1] == 'crc.xml':
+        file_name = os.path.split(file_path)[1]
+
+        if file_name == 'crc.xml':
             return
 
+        if len(file_name) > 60:
+            return
+
+        for e in self._entries:
+            if e.name == file_name:
+                return
+
         entry = Entry.from_file(file_path, self._relative_offset)
-        self._relative_offset += entry.compressed_size
         self._entries.append(entry)
-        self._crc.append_entry(entry)
 
     def to_file(self):
+        self._crc = Crc(self._version)
         entries_metadata = bytearray()
         data = bytearray()
 
@@ -237,7 +240,9 @@ class Kom:
         # file has it in that place.
         header_info = struct.pack('<27s25x2I', raw_version, len(self._entries) + 1, 1)
 
+        self._sort_entries()
         for entry in self._entries:
+            self._crc.append_entry(entry)
             entries_metadata += entry.packed_metadata
             data += entry.data
 
@@ -260,3 +265,20 @@ class Kom:
         out_file_path = os.path.join(out_dir, entry.name)
         with open(out_file_path, 'wb') as f:
             f.write(entry.uncompressed_data)
+
+    @property
+    def _relative_offset(self):
+        if len(self._entries) == 0:
+            return 0
+        else:
+            last_entry = self._entries[-1]
+            return last_entry.relative_offset + last_entry.compressed_size
+
+    def _sort_entries(self):
+        self._entries.sort(key=lambda x: x.name)
+
+        # Recalculate relative offsets
+        relative_offset = 0
+        for e in self._entries:
+            e.relative_offset = relative_offset
+            relative_offset += e.compressed_size
