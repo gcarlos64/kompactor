@@ -212,15 +212,13 @@ def main(argv):
             write(crc_path, kom.crc_xml, force_overwrite)
             print('Written crc.xml')
 
+    # TODO: handle errors, format output better and add header
     elif action == 'list':
-        in_file_path = args[0]
-        try:
-            kom = Kom.from_kom_file(in_file_path)
+        for f in args:
+            kom = Kom.from_kom_file(f)
             for entry in kom.entries:
-                print(entry.name)
-        except Exception as e:
-            eprint(e)
-            sys.exit(1)
+                print('{}: {} {} {}'.format(f, entry.name, entry.compressed_size,
+                                            entry.uncompressed_size))
 
 if __name__ == "__main__":
     main(sys.argv)
