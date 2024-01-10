@@ -16,8 +16,13 @@
 import struct
 import sys
 import os
+import errno
 import zlib
 from xml.dom.minidom import Document, parseString
+
+#class IgnoredFile(Exception):
+#    def __init__(self, file_name):
+#        self.file_name = file_name
 
 class Entry:
     metadata_size = 72
@@ -175,12 +180,11 @@ class Kom:
         self._version = version
         self._entries = entries
 
+        self._crc = crc
         if crc:
-            self._crc = crc
             self._crc_entry = self._entries[-1]
             del self._entries[-1]
         else:
-            self._crc = None
             self._crc_entry = None
 
     @classmethod
@@ -252,7 +256,7 @@ class Kom:
 
         return header_info + entries_metadata + data
 
-    def extract(self, entry_index, out_dir):
+    def extract(self, entry_index, out_dir, force_overwrite=False):
         try:
             os.makedirs(out_dir)
         except FileExistsError as e:
@@ -263,6 +267,10 @@ class Kom:
 
         entry = self._crc_entry if entry_index == 'crc' else self._entries[entry_index]
         out_file_path = os.path.join(out_dir, entry.name)
+
+        if not force_overwrite and os.path.isfile(out_file_path):
+            raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), out_file_path)
+
         with open(out_file_path, 'wb') as f:
             f.write(entry.uncompressed_data)
 

@@ -18,6 +18,7 @@
 import getopt
 import sys
 import os
+import errno
 
 from kom import Kom
 
@@ -41,6 +42,9 @@ Actions:
                       <file-list>, extract only them from the KOM instead.
 
 Options:
+  -f, --force         Force overwriting files. This has no effect when trying
+                      to overwrite directories, since it is not allowed.
+
   -k, --keep-crc      Keeps crc.xml. Write the extracted or generated crc.xml
                       next to the created or extracted files.
 
@@ -76,20 +80,48 @@ def print_help(executable_name):
 def print_examples(executable_name):
     print(examples.format(executable=executable_name))
 
+def extract(kom, i, out_file_path, force_overwrite):
+    try:
+        kom.extract(i, out_file_path, force_overwrite)
+    except FileExistsError as e:
+        eprint('Trying to overwrite "%s" file' % e.filename)
+        sys.exit(e.errno)
+    except IsADirectoryError as e:
+        eprint('Trying to overwrite "%s" directory' % e.filename)
+        sys.exit(e.errno)
+
+    if i == 'crc':
+        print('Extracted crc.xml')
+    else:
+        print('Extracted', kom.entries[i].name)
+
+def write(file_path, data, force_overwrite):
+    if not force_overwrite and os.path.isfile(file_path):
+        eprint('Trying to overwrite "%s" file' % file_path)
+        sys.exit(errno.EEXIST)
+
+    try:
+        with open(file_path, 'wb') as f:
+            f.write(data)
+    except IsADirectoryError as e:
+        eprint('Trying to overwrite "%s" directory' % e.filename)
+        sys.exit(e.errno)
+
 def main(argv):
     if len(argv) == 1:
         print_help(argv[0])
         sys.exit(0)
 
     try:
-        opts, args = getopt.gnu_getopt(argv[1:], 'chklo:x',
-                                       ['create', 'help', 'keep-crc', 'list',
-                                        'output=', 'extract', 'examples'])
+        opts, args = getopt.gnu_getopt(argv[1:], 'cfhklo:x',
+                                       ['create', 'force', 'help', 'keep-crc',
+                                        'list', 'output=', 'extract', 'examples'])
     except Exception as e:
         eprint(e)
         sys.exit(1)
 
     action = ''
+    force_overwrite = False
     keep_crc = False
     out_file_path = None
     for opt, arg in opts:
@@ -109,6 +141,9 @@ def main(argv):
 
         elif opt in ('-x', '--extract'):
             action = 'extract' if (action == '') else 'error'
+
+        elif opt in ('-f', '--force'):
+            force_overwrite = True
 
         elif opt in ('-k', '--keep-crc'):
             keep_crc = True
@@ -132,26 +167,28 @@ def main(argv):
         in_file_path = args[0]
         file_list = args[1:]
         if not out_file_path:
-            out_file_path = os.getcwd()
+            out_file_path = os.path.relpath(os.getcwd())
 
         kom = Kom.from_kom_file(in_file_path)
 
         index_list = [i for i in range(len(kom.entries))
                       if kom.entries[i].name in file_list or
                       file_list == []]
+
+        if len(index_list) == 0:
+            eprint('No valid file entry was provided for extraction')
+            sys.exit(1)
+
         for i in index_list:
-            print('Extracting', kom.entries[i].name)
-            kom.extract(i, out_file_path)
+            extract(kom, i, out_file_path, force_overwrite)
 
         if keep_crc:
-            print('Extracting crc.xml')
-            crc_path = os.path.join(out_file_path, 'crc.xml')
-            kom.extract('crc', out_file_path)
+            extract(kom, 'crc', out_file_path, force_overwrite)
 
     elif action == 'create':
         file_list = []
         if not out_file_path:
-            out_file_path = os.path.join(os.getcwd(), 'a.kom')
+            out_file_path = os.path.join(os.path.relpath(os.getcwd()), 'a.kom')
 
         kom = Kom(2)
 
@@ -164,18 +201,16 @@ def main(argv):
                 print('Ignoring', file_name)
                 continue
 
-            print('Including', file_name)
             kom.add_file(file_path)
+            print('Included', file_name)
 
-        with open(out_file_path, 'wb') as f:
-            print('Creating', os.path.split(out_file_path)[1])
-            f.write(kom.to_file())
+        write(out_file_path, kom.to_file(), force_overwrite)
+        print('Created', os.path.split(out_file_path)[1])
 
         if keep_crc:
-            print('Writting crc.xml')
             crc_path = os.path.join(os.path.split(out_file_path)[0], 'crc.xml')
-            with open(crc_path, 'wb') as f:
-                f.write(kom.crc_xml)
+            write(crc_path, kom.crc_xml, force_overwrite)
+            print('Written crc.xml')
 
     elif action == 'list':
         in_file_path = args[0]
