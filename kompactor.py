@@ -37,6 +37,8 @@ Actions:
 
   -l, --list          List file entries on KOM files specified on <file-list>.
 
+  -p, --print         Like extract, but print the files on stdout instead.
+
   -x, --extract       Extract the KOM file specified on the first element of
                       <file-list> entirely. If additional files specified on
                       <file-list>, extract only them from the KOM instead.
@@ -81,6 +83,7 @@ kom_not_valid_err_msg = '"%s" is not a valid KOM file'
 no_file_entry_err_msg = 'No valid file entry was provided for extraction'
 ignore_err_msg = 'Unable to ignore %s. If it was intentional, run with -i option'
 include_err_msg = 'Unable to include multiples files named "%s"'
+bad_extract_output_err_msg = 'Unable to extract, the output %s is a regular file'
 
 def eprint(*args, **kwargs):
     print('Error:', *args, file=sys.stderr, **kwargs)
@@ -91,22 +94,7 @@ def print_help(executable_name):
 def print_examples(executable_name):
     print(examples.format(executable=executable_name))
 
-def extract(kom, i, out_file_path, force_overwrite):
-    try:
-        kom.extract(i, out_file_path, force_overwrite)
-    except FileExistsError as e:
-        eprint(overwrite_file_err_msg % file_path)
-        sys.exit(e.errno)
-    except IsADirectoryError as e:
-        eprint(overwrite_dir_err_msg % e.filename)
-        sys.exit(e.errno)
-
-    if i == 'crc':
-        print('Extracted crc.xml')
-    else:
-        print('Extracted', kom.entries[i].name)
-
-def write(file_path, data, force_overwrite):
+def write(data, file_path, force_overwrite):
     if not force_overwrite and os.path.isfile(file_path):
         eprint(overwrite_file_err_msg % file_path)
         sys.exit(errno.EEXIST)
@@ -124,10 +112,10 @@ def main(argv):
         sys.exit(0)
 
     try:
-        opts, args = getopt.gnu_getopt(argv[1:], 'cfhiklo:x',
+        opts, args = getopt.gnu_getopt(argv[1:], 'cfhiklpo:x',
                                        ['create', 'force', 'help', 'ignore',
-                                        'keep-crc', 'list', 'output=', 'extract',
-                                        'examples'])
+                                        'keep-crc', 'list', 'print', 'output=',
+                                        'extract', 'examples'])
     except Exception as e:
         eprint(e)
         sys.exit(1)
@@ -136,7 +124,7 @@ def main(argv):
     force_overwrite = False
     keep_crc = False
     ignore_files = False
-    out_file_path = None
+    out_path= None
     for opt, arg in opts:
         if opt in ('-h', '--help'):
             print_help(argv[0])
@@ -152,6 +140,9 @@ def main(argv):
         elif opt in ('-l', '--list'):
             action = 'list' if (action == '') else 'error'
 
+        elif opt in ('-p', '--print'):
+            action = 'print' if (action == '') else 'error'
+
         elif opt in ('-x', '--extract'):
             action = 'extract' if (action == '') else 'error'
 
@@ -165,7 +156,7 @@ def main(argv):
             ignore_files = True
 
         elif opt in ('-o', '--output'):
-            out_file_path = arg
+            out_path = arg
 
     if action == '':
         eprint(no_action_err_msg)
@@ -182,8 +173,15 @@ def main(argv):
     if action == 'extract':
         in_file_path = args[0]
         file_list = args[1:]
-        if not out_file_path:
-            out_file_path = os.path.relpath(os.getcwd())
+
+        if out_path:
+            if os.path.isfile(out_path):
+                eprint(bad_extract_output_err_msg % out_path)
+                sys.exit(1)
+            elif not os.path.isdir(out_path):
+                os.makedirs(out_path)
+        else:
+            out_path = os.path.relpath(os.getcwd())
 
         try:
             kom = Kom.from_kom_file(in_file_path)
@@ -200,15 +198,46 @@ def main(argv):
             sys.exit(1)
 
         for i in index_list:
-            extract(kom, i, out_file_path, force_overwrite)
+            file_name = kom.entries[i].name
+            out_file_path = os.path.join(out_path, file_name)
+            write(kom.extract(i), out_file_path, force_overwrite)
+            print('Extracted', file_name)
 
         if keep_crc:
-            extract(kom, 'crc', out_file_path, force_overwrite)
+            file_name = 'crc.xml'
+            out_file_path = os.path.join(out_path, file_name)
+            write(kom.extract('crc'), out_file_path, force_overwrite)
+            print('Extracted', file_name)
+
+    elif action == 'print':
+        in_file_path = args[0]
+        file_list = args[1:]
+        out_file_path = '/dev/stdout'
+
+        try:
+            kom = Kom.from_kom_file(in_file_path)
+        except:
+            eprint(kom_not_valid_err_msg % in_file_path)
+            sys.exit(1)
+
+        index_list = [i for i in range(len(kom.entries))
+                      if kom.entries[i].name in file_list or
+                      file_list == []]
+
+        if len(index_list) == 0:
+            eprint(no_file_entry_err_msg)
+            sys.exit(1)
+
+        for i in index_list:
+            write(kom.extract(i), out_file_path, force_overwrite)
+
+        if keep_crc:
+            write(kom.extract('crc'), out_file_path, force_overwrite)
 
     elif action == 'create':
         file_list = []
-        if not out_file_path:
-            out_file_path = os.path.join(os.path.relpath(os.getcwd()), 'a.kom')
+        if not out_path:
+            out_path = os.path.join(os.path.relpath(os.getcwd()), 'a.kom')
 
         kom = Kom(2)
 
@@ -234,12 +263,12 @@ def main(argv):
             else:
                 print('Included', file_name)
 
-        write(out_file_path, kom.to_file(), force_overwrite)
-        print('Created', os.path.split(out_file_path)[1])
+        write(kom.to_file(), out_path, force_overwrite)
+        print('Created', os.path.split(out_path)[1])
 
         if keep_crc:
-            crc_path = os.path.join(os.path.split(out_file_path)[0], 'crc.xml')
-            write(crc_path, kom.crc_xml, force_overwrite)
+            crc_path = os.path.join(os.path.split(out_path)[0], 'crc.xml')
+            write(kom.crc_xml, crc_path, force_overwrite)
             print('Written crc.xml')
 
     # TODO: handle errors, format output better and add header

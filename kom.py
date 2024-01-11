@@ -92,10 +92,6 @@ class Entry:
     def from_file(cls, file_path, relative_offset):
         name = os.path.split(file_path)[1]
 
-        if len(name) > 60:
-            raise Exception('the file "%s" is nammed bigger than 60 characters' % name)
-
-
         with open(file_path, 'rb') as f:
             data = zlib.compress(f.read())
 
@@ -141,7 +137,7 @@ class Crc:
             dom_file_info.appendChild(dom_version)
 
             dom_version_item = self._dom.createElement('Item')
-            dom_version_item.setAttribute('Name', Kom.version_format % version)
+            dom_version_item.setAttribute('Name', Kom.version_fmt % version)
             dom_version.appendChild(dom_version_item)
 
             self._dom_files = self._dom.createElement('File')
@@ -159,8 +155,8 @@ class Crc:
 
 class Kom:
     header_info_size = 60
-    raw_version_format = 'KOG GC TEAM MASSFILE V.0.%d.'
-    version_format = 'V.0.%d.'
+    raw_version_fmt = 'KOG GC TEAM MASSFILE V.0.%d.'
+    version_fmt = 'V.0.%d.'
 
     @property
     def entries(self):
@@ -176,7 +172,7 @@ class Kom:
 
     @property
     def version_str(self):
-        return Kom.version_format % self._version
+        return Kom.version_fmt % self._version
 
     @property
     def crc_xml(self):
@@ -205,8 +201,8 @@ class Kom:
 
             decoded_raw_version = raw_version.decode('ascii')
             version = int(decoded_raw_version.split('.')[-2])
-            if decoded_raw_version != raw_version_format % version and \
-               version in range(6):
+            if decoded_raw_version != Kom.raw_version_fmt % version or \
+               version not in range(6):
                 raise Exception
 
             entries_size = Entry.metadata_size * entry_count
@@ -267,23 +263,9 @@ class Kom:
 
         return header_info + entries_metadata + data
 
-    def extract(self, entry_index, out_dir, force_overwrite=False):
-        try:
-            os.makedirs(out_dir)
-        except FileExistsError as e:
-            if os.path.isdir(out_dir):
-                pass
-            else:
-                raise e
-
+    def extract(self, entry_index):
         entry = self._crc_entry if entry_index == 'crc' else self._entries[entry_index]
-        out_file_path = os.path.join(out_dir, entry.name)
-
-        if not force_overwrite and os.path.isfile(out_file_path):
-            raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), out_file_path)
-
-        with open(out_file_path, 'wb') as f:
-            f.write(entry.uncompressed_data)
+        return entry.uncompressed_data
 
     @property
     def _relative_offset(self):
