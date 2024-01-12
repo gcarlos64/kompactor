@@ -18,6 +18,7 @@ import sys
 import os
 import errno
 import zlib
+from collections import deque
 from xml.dom.minidom import Document, parseString
 
 class IgnoredFile(Exception):
@@ -89,7 +90,7 @@ class Entry:
         return e
 
     @classmethod
-    def from_file(cls, file_path, relative_offset):
+    def from_file(cls, file_path):
         name = os.path.split(file_path)[1]
 
         with open(file_path, 'rb') as f:
@@ -97,7 +98,7 @@ class Entry:
 
         uncompressed_size = os.path.getsize(file_path)
         compressed_size = len(data)
-        return cls(name, uncompressed_size, compressed_size, relative_offset, data)
+        return cls(name, uncompressed_size, compressed_size, None, data)
 
     @classmethod
     def from_data(cls, raw_data, name, relative_offset):
@@ -178,15 +179,43 @@ class Kom:
     def crc_xml(self):
         return self._crc.xml
 
-    def __init__(self, version, entries=[], crc=None):
+    def _find_entry(self, name):
+        for entry in self._entries:
+            if name == entry.name:
+                return entry
+        raise ValueError
+
+    def __getitem__(self, i):
+        t = type(i)
+        if t == int:
+            return self._entries[i]
+        elif t == str:
+            return self._crc_entry if i == 'crc.xml' else self._find_entry(i)
+        else:
+            raise TypeError
+
+    def __len__(self):
+        return len(self._entries) + 1 if self._crc_entry else 0
+
+    def __iter__(self):
+        self._iter_indexes = deque(range(len(self._entries)))
+        if self._crc_entry:
+            self._iter_indexes.append('crc.xml')
+        return self
+
+    def __next__(self):
+        self._iter_current_index = self._iter_indexes.popleft()
+        return self[self._iter_current_index]
+
+    def __init__(self, version, entries=[], crc_entry=None):
         self._version = version
         self._entries = entries
 
-        self._crc = crc
-        if crc:
-            self._crc_entry = self._entries[-1]
-            del self._entries[-1]
+        if crc_entry:
+            self._crc = Crc(version, entry=crc_entry)
+            self._crc_entry = crc_entry
         else:
+            self._crc = None
             self._crc_entry = None
 
     @classmethod
@@ -219,9 +248,10 @@ class Kom:
             entries.append(entry)
             offset += Entry.metadata_size
 
-        crc = Crc(version, entry=entries[-1])
+        crc_entry = entries[-1]
+        del entries[-1]
 
-        return cls(version, entries=entries, crc=crc)
+        return cls(version, entries=entries, crc_entry=crc_entry)
 
     def add_file(self, file_path):
         file_name = os.path.split(file_path)[1]
@@ -236,7 +266,7 @@ class Kom:
             if e.name == file_name:
                 raise MultipleFilesError(file_name)
 
-        entry = Entry.from_file(file_path, self._relative_offset)
+        entry = Entry.from_file(file_path)
         self._entries.append(entry)
 
     def to_file(self):
@@ -257,15 +287,17 @@ class Kom:
             entries_metadata += entry.packed_metadata
             data += entry.data
 
-        entry = Entry.from_data(self._crc.xml, 'crc.xml', self._relative_offset)
-        entries_metadata += entry.packed_metadata
-        data += entry.data
+        self._crc_entry = Entry.from_data(self._crc.xml, 'crc.xml', self._relative_offset)
+        entries_metadata += self._crc_entry.packed_metadata
+        data += self._crc_entry.data
 
         return header_info + entries_metadata + data
 
-    def extract(self, entry_index):
-        entry = self._crc_entry if entry_index == 'crc' else self._entries[entry_index]
-        return entry.uncompressed_data
+    def extract(self, entry):
+        if type(entry) == Entry:
+            return entry.uncompressed_data
+        else:
+            return self[entry].uncompressed_data
 
     @property
     def _relative_offset(self):

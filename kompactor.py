@@ -84,6 +84,7 @@ no_file_entry_err_msg = 'No valid file entry was provided for extraction'
 ignore_err_msg = 'Unable to ignore %s. If it was intentional, run with -i option'
 include_err_msg = 'Unable to include multiples files named "%s"'
 bad_extract_output_err_msg = 'Unable to extract, the output %s is a regular file'
+extract_no_entry_err_msg = 'Unable to extract "%s" from KOM, there is no such entry'
 
 def eprint(*args, **kwargs):
     print('Error:', *args, file=sys.stderr, **kwargs)
@@ -172,7 +173,16 @@ def main(argv):
 
     if action == 'extract':
         in_file_path = args[0]
-        file_list = args[1:]
+
+        try:
+            kom = Kom.from_kom_file(in_file_path)
+        except:
+            eprint(kom_not_valid_err_msg % in_file_path)
+            sys.exit(1)
+
+        entry_list = args[1:] if len(args) > 1 else [e for e in kom.entries]
+        if keep_crc and 'crc.xml' not in entry_list:
+            entry_list.append('crc.xml')
 
         if out_path:
             if os.path.isfile(out_path):
@@ -183,36 +193,18 @@ def main(argv):
         else:
             out_path = os.path.relpath(os.getcwd())
 
-        try:
-            kom = Kom.from_kom_file(in_file_path)
-        except:
-            eprint(kom_not_valid_err_msg % in_file_path)
-            sys.exit(1)
-
-        index_list = [i for i in range(len(kom.entries))
-                      if kom.entries[i].name in file_list or
-                      file_list == []]
-
-        if len(index_list) == 0:
-            eprint(no_file_entry_err_msg)
-            sys.exit(1)
-
-        for i in index_list:
-            file_name = kom.entries[i].name
+        for e in entry_list:
+            file_name = e if type(e) == str else e.name
             out_file_path = os.path.join(out_path, file_name)
-            write(kom.extract(i), out_file_path, force_overwrite)
-            print('Extracted', file_name)
-
-        if keep_crc:
-            file_name = 'crc.xml'
-            out_file_path = os.path.join(out_path, file_name)
-            write(kom.extract('crc'), out_file_path, force_overwrite)
+            try:
+                write(kom.extract(e), out_file_path, force_overwrite)
+            except TypeError:
+                eprint(extract_no_entry_err_msg % file_name)
+                sys.exit(1)
             print('Extracted', file_name)
 
     elif action == 'print':
         in_file_path = args[0]
-        file_list = args[1:]
-        out_file_path = '/dev/stdout'
 
         try:
             kom = Kom.from_kom_file(in_file_path)
@@ -220,19 +212,17 @@ def main(argv):
             eprint(kom_not_valid_err_msg % in_file_path)
             sys.exit(1)
 
-        index_list = [i for i in range(len(kom.entries))
-                      if kom.entries[i].name in file_list or
-                      file_list == []]
+        entry_list = args[1:] if len(args) > 1 else [e for e in kom.entries]
+        if keep_crc and 'crc.xml' not in entry_list:
+            entry_list.append('crc.xml')
 
-        if len(index_list) == 0:
-            eprint(no_file_entry_err_msg)
-            sys.exit(1)
-
-        for i in index_list:
-            write(kom.extract(i), out_file_path, force_overwrite)
-
-        if keep_crc:
-            write(kom.extract('crc'), out_file_path, force_overwrite)
+        for e in entry_list:
+            try:
+                file_name = e if type(e) == str else e.name
+                sys.stdout.buffer.write(kom.extract(e))
+            except ValueError as e:
+                eprint(extract_no_entry_err_msg % file_name)
+                sys.exit(1)
 
     elif action == 'create':
         file_list = []
