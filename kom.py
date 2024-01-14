@@ -207,19 +207,18 @@ class Kom:
         self._iter_current_index = self._iter_indexes.popleft()
         return self[self._iter_current_index]
 
-    def __init__(self, version, entries=[], crc_entry=None):
-        self._version = version
-        self._entries = entries
-
-        if crc_entry:
-            self._crc = Crc(version, entry=crc_entry)
-            self._crc_entry = crc_entry
-        else:
+    def __init__(self, version=None, file_path=None):
+        if version and not file_path:
+            self._version = version
+            self._entries = []
             self._crc = None
             self._crc_entry = None
+        elif file_path:
+            self._from_kom_file(file_path)
+        else:
+            raise Exception
 
-    @classmethod
-    def from_kom_file(cls, file_path):
+    def _from_kom_file(self, file_path):
         entries = []
 
         with open(file_path, 'rb') as f:
@@ -251,7 +250,10 @@ class Kom:
         crc_entry = entries[-1]
         del entries[-1]
 
-        return cls(version, entries=entries, crc_entry=crc_entry)
+        self._entries = entries
+        self._version = version
+        self._crc_entry = crc_entry
+        self._crc = Crc(version, crc_entry)
 
     def add_file(self, file_path):
         file_name = os.path.split(file_path)[1]

@@ -175,7 +175,7 @@ def main(argv):
         in_file_path = args[0]
 
         try:
-            kom = Kom.from_kom_file(in_file_path)
+            kom = Kom(file_path=in_file_path)
         except:
             eprint(kom_not_valid_err_msg % in_file_path)
             sys.exit(1)
@@ -207,7 +207,7 @@ def main(argv):
         in_file_path = args[0]
 
         try:
-            kom = Kom.from_kom_file(in_file_path)
+            kom = Kom(file_path=in_file_path)
         except:
             eprint(kom_not_valid_err_msg % in_file_path)
             sys.exit(1)
@@ -265,8 +265,8 @@ def main(argv):
     elif action == 'list':
         for f in args:
             try:
-                kom = Kom.from_kom_file(f)
-            except:
+                kom = Kom(file_path=f)
+            except Exception as e:
                 eprint(kom_not_valid_err_msg  % f)
                 sys.exit(1)
 
