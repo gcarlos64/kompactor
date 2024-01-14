@@ -26,6 +26,9 @@ help_message = '''
 Usage: {executable} <action> <options> <file-list>
 
 Actions:
+  -a, --append        Append the KOM at first element of <file-list> with the
+                      files specified on the rest of <file-list>
+
   -c, --create        Create a kom file from directory <file-list>. If a
                       directory was specified, include all regular files from
                       it. Files named "crc.xml" or with name length higher than
@@ -92,6 +95,8 @@ bad_extract_output_err_msg = 'Unable to extract, the output %s is a regular file
 extract_no_entry_err_msg = 'Unable to extract "%s" from KOM, there is no such entry'
 remove_no_entry_err_msg = 'Unable to remove "%s" from KOM, there is no such entry'
 remove_no_args_err_msg = 'You should specify at least one file for remove.'
+append_no_args_err_msg = 'You should specify at least one file for append.'
+append_overwrite_err_msg = 'Unable to append "%s" to KOM, entry already exists. You can run with -f option to overwrite it if intended.'
 
 def eprint(*args, **kwargs):
     print('Error:', *args, file=sys.stderr, **kwargs)
@@ -120,10 +125,11 @@ def main(argv):
         sys.exit(0)
 
     try:
-        opts, args = getopt.gnu_getopt(argv[1:], 'cfhiklpro:x',
-                                       ['create', 'force', 'help', 'ignore',
-                                        'keep-crc', 'list', 'print', 'remove'
-                                        'output=', 'extract', 'examples'])
+        opts, args = getopt.gnu_getopt(argv[1:], 'acfhiklpro:x',
+                                       ['append', 'create', 'force', 'help',
+                                        'ignore', 'keep-crc', 'list', 'print',
+                                        'remove' 'output=', 'extract',
+                                        'examples'])
     except Exception as e:
         eprint(e)
         sys.exit(1)
@@ -141,6 +147,9 @@ def main(argv):
         elif opt == '--examples':
             print_examples(argv[0])
             sys.exit(0)
+
+        elif opt in ('-a', '--append'):
+            action = 'append' if (action == '') else 'error'
 
         elif opt in ('-c', '--create'):
             action = 'create' if (action == '') else 'error'
@@ -208,7 +217,7 @@ def main(argv):
             out_file_path = os.path.join(out_path, file_name)
             try:
                 write(kom.extract(e), out_file_path, force_overwrite)
-            except TypeError:
+            except ValueError:
                 eprint(extract_no_entry_err_msg % file_name)
                 sys.exit(1)
             print('Extracted', file_name)
@@ -293,6 +302,42 @@ def main(argv):
                 sys.exit(1)
             else:
                 print('Included', file_name)
+
+        write(kom.to_file(), out_path, force_overwrite)
+        print('Created', os.path.split(out_path)[1])
+
+        if keep_crc:
+            crc_path = os.path.join(os.path.split(out_path)[0], 'crc.xml')
+            write(kom.crc_xml, crc_path, force_overwrite)
+            print('Written crc.xml')
+
+    elif action == 'append':
+        in_file_path = args[0]
+        file_list = args[1:]
+        out_path = out_path if out_path else in_file_path
+
+        if file_list == []:
+            eprint(append_no_args_err_msg)
+            sys.exit(1)
+
+        try:
+            kom = Kom(file_path=in_file_path)
+        except:
+            eprint(kom_not_valid_err_msg % in_file_path)
+            sys.exit(1)
+
+        for f in file_list:
+            file_name = os.path.split(f)[1]
+            try: 
+                kom.add_file(f)
+            except MultipleFilesError:
+                if force_overwrite:
+                    kom.del_entry(file_name)
+                    kom.add_file(f)
+                else:
+                    eprint(append_overwrite_err_msg % file_name)
+                    sys.exit(1)
+            print('Included', file_name)
 
         write(kom.to_file(), out_path, force_overwrite)
         print('Created', os.path.split(out_path)[1])
