@@ -5,6 +5,19 @@ The project is splitted in just 2 files, `kom.py`, which is the library
 that implement `.kom` files operations and `kompactor.py`, which is
 the cli interface built on top of it.
 
+# Features
+My motivation to write this, despite the lot of tools that does the
+same job, was to have one powerful enought to be scriptable and adaptable
+to every workflow. With `kompactor`, you can:
+
+- Choose what files to extract from KOM
+- List, append, replace, remove and print entries from KOM
+- Create a KOM from a list of files
+- Choose how to handle `crc.xml`
+- Choose when to overwrite files
+- Choose where your output files goes
+- Choose when to ignore invalid input files
+
 # Usage
 You can run the `kompactor.py` like any other python script:
 ```
@@ -27,8 +40,7 @@ by me if I start to work with these or by anyone willing to, it's free software
 and is always welcome to contributors.
 
 # TODO
-This tool in its current state just do its job, nothing more. There's a lot
-of room for improvements, like:
+There's always a lot of room for improvements, like:
 
 - Package it.
 - Document the code.
