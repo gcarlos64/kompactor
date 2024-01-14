@@ -271,6 +271,10 @@ class Kom:
         entry = Entry.from_file(file_path)
         self._entries.append(entry)
 
+    def del_entry(self, entry):
+        e = entry if type(entry) == Entry else self._find_entry(entry)
+        del self._entries[self._entries.index(e)]
+
     def to_file(self):
         self._crc = Crc(self._version)
         entries_metadata = bytearray()

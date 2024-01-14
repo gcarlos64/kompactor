@@ -39,6 +39,9 @@ Actions:
 
   -p, --print         Like extract, but print the files on stdout instead.
 
+  -r, --remove        Like extract, but remove entries from the KOM file
+                      instead.
+
   -x, --extract       Extract the KOM file specified on the first element of
                       <file-list> entirely. If additional files specified on
                       <file-list>, extract only them from the KOM instead.
@@ -50,7 +53,9 @@ Options:
   -i, --ignore        Allows to ignore files.
 
   -k, --keep-crc      Keeps crc.xml. Write the extracted or generated crc.xml
-                      next to the created or extracted files.
+                      next to the created or extracted files. Some actions
+                      like print and extract accept "crc.xml" on <file-list>
+                      for the same result.
 
   -o  --output <arg>  Specify the output KOM file for creation or the output
                       directory for extraction, creating it if it doesn't
@@ -85,6 +90,8 @@ ignore_err_msg = 'Unable to ignore %s. If it was intentional, run with -i option
 include_err_msg = 'Unable to include multiples files named "%s"'
 bad_extract_output_err_msg = 'Unable to extract, the output %s is a regular file'
 extract_no_entry_err_msg = 'Unable to extract "%s" from KOM, there is no such entry'
+remove_no_entry_err_msg = 'Unable to remove "%s" from KOM, there is no such entry'
+remove_no_args_err_msg = 'You should specify at least one file for remove.'
 
 def eprint(*args, **kwargs):
     print('Error:', *args, file=sys.stderr, **kwargs)
@@ -113,10 +120,10 @@ def main(argv):
         sys.exit(0)
 
     try:
-        opts, args = getopt.gnu_getopt(argv[1:], 'cfhiklpo:x',
+        opts, args = getopt.gnu_getopt(argv[1:], 'cfhiklpro:x',
                                        ['create', 'force', 'help', 'ignore',
-                                        'keep-crc', 'list', 'print', 'output=',
-                                        'extract', 'examples'])
+                                        'keep-crc', 'list', 'print', 'remove'
+                                        'output=', 'extract', 'examples'])
     except Exception as e:
         eprint(e)
         sys.exit(1)
@@ -143,6 +150,9 @@ def main(argv):
 
         elif opt in ('-p', '--print'):
             action = 'print' if (action == '') else 'error'
+
+        elif opt in ('-r', '--remove'):
+            action = 'remove' if (action == '') else 'error'
 
         elif opt in ('-x', '--extract'):
             action = 'extract' if (action == '') else 'error'
@@ -223,6 +233,37 @@ def main(argv):
             except ValueError as e:
                 eprint(extract_no_entry_err_msg % file_name)
                 sys.exit(1)
+
+    elif action == 'remove':
+        in_file_path = args[0]
+        entry_list = args[1:]
+        out_path = out_path if out_path else in_file_path
+
+        if entry_list == []:
+            eprint(remove_no_args_err_msg)
+            sys.exit(1)
+
+        try:
+            kom = Kom(file_path=in_file_path)
+        except:
+            eprint(kom_not_valid_err_msg % in_file_path)
+            sys.exit(1)
+
+        for e in entry_list:
+            try: 
+                kom.del_entry(e)
+                print('Removed', e)
+            except ValueError:
+                eprint(remove_no_entry_err_msg % e)
+                sys.exit(1)
+
+        write(kom.to_file(), out_path, force_overwrite)
+        print('Created', os.path.split(out_path)[1])
+
+        if keep_crc:
+            crc_path = os.path.join(os.path.split(out_path)[0], 'crc.xml')
+            write(kom.crc_xml, crc_path, force_overwrite)
+            print('Written crc.xml')
 
     elif action == 'create':
         file_list = []
