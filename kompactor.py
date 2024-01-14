@@ -27,12 +27,12 @@ Usage: {executable} <action> <options> <file-list>
 
 Actions:
   -a, --append        Append the KOM at first element of <file-list> with the
-                      files specified on the rest of <file-list>
+                      files specified on the rest of the list
 
-  -c, --create        Create a kom file from directory <file-list>. If a
-                      directory was specified, include all regular files from
-                      it. Files named "crc.xml" or with name length higher than
-                      60 characters are ignored.
+  -c, --create        Create a kom file from <file-list>. If a directory was
+                      provided, include all regular files from it. Files named
+                      "crc.xml" or with name length higher than 60 characters
+                      are ignored.
 
       --examples      Show some usage examples.
 
@@ -42,16 +42,17 @@ Actions:
 
   -p, --print         Like extract, but print the files on stdout instead.
 
-  -r, --remove        Like extract, but remove entries from the KOM file
-                      instead.
+  -r, --remove        Remove files at <file-list> from the KOM file specified
+                      on the first element of <file-list>.
 
   -x, --extract       Extract the KOM file specified on the first element of
-                      <file-list> entirely. If additional files specified on
+                      <file-list>. If additional files specified on
                       <file-list>, extract only them from the KOM instead.
 
 Options:
-  -f, --force         Force overwriting files. This has no effect when trying
-                      to overwrite directories, since it is not allowed.
+  -f, --force         Force overwriting files and entries. This has no effect
+                      when trying to overwrite directories, since it is not
+                      allowed.
 
   -i, --ignore        Allows to ignore files.
 
@@ -60,26 +61,37 @@ Options:
                       like print and extract accept "crc.xml" on <file-list>
                       for the same result.
 
-  -o  --output <arg>  Specify the output KOM file for creation or the output
-                      directory for extraction, creating it if it doesn't
+  -o  --output <arg>  Specify the output KOM file for creation/modification or
+                      the output directory for extraction, creating it if it doesn't
                       exists. If not specified, extracted files goes on the
                       current directory and created KOM files goes to a file
-                      named "a.kom", also in the current directory.
+                      named "a.kom", also in the current directory. If specified
+                      on file modification, result into a new KOM file having
+                      these, letting the original one intact.
 '''
 
 examples = '''
 Examples:
- {executable} -l file.kom
-   List entries from file.kom.
+  {executable} -l file.kom
+    List entries from file.kom.
 
- {executable} -x file.kom
-   Extract file.kom on the current directory.
+  {executable} -x file.kom
+    Extract file.kom on the current directory.
 
- {executable} -kx file.kom -o dir
-   Extract file.kom on the directory "dir", as well as its "crc.xml".
+  {executable} -kx file.kom -o dir
+    Extract file.kom on the directory "dir", as well as its "crc.xml".
 
- {executable} -c dir file1 file2 -o out.kom
-   Create out.kom from the contents of directory "dir" plus file1 and file2.
+  {executable} -c dir file1 file2 -o out.kom
+    Create out.kom from the contents of directory "dir" plus file1 and file2.
+
+  {executable} -af file.kom file2
+    Append file2 to file.kom, replacing it if already exists
+
+  {executable} -a file.kom file2 file3 -o out.kom
+    Append file2 and file3 to file.kom and write the resultant KOM on out.kom
+
+  {executable} -r file.kom file2 file3
+    Remove file2 and file3 from file.kom
 '''
 
 overwrite_file_err_msg = 'Unable to overwrite "%s" file. It it was intentional, run with -f option'
